@@ -3,6 +3,7 @@ import threading
 import time
 import struct
 import concurrent
+import pickle
 
 # Broadcast IP Fritzbox 192.168.178.255
 # BROADCAST_IP = "192.168.178.255"
@@ -31,6 +32,7 @@ class Server():
         self.isLeader = False
         self.serverlist = []    # List of Servers and their addresses
         self.clientlist = []    # List of Clients and their addresses
+        # self.sever_address_leader = ()
 
     # ------------- Multicast -------------
 
@@ -65,12 +67,21 @@ class Server():
                         data, server_addr = sock.recvfrom(128)
                         print('received "%s" from %s' % (data.decode(), server_addr))
                         print(data.decode())
+                        # ip, port = server_addr
                         if data.decode() == "True":
                             print('received "%s" from %s' % (data.decode(), server_addr))
                             print("LEADER FOUND")
+                            # Address of leader
+                            # self.server_address_leader = server_addr
+                            # print(self.server_address_leader)
+                            # self.serverlist.append((server_addr, True))
+
+
                             leader_server_found = True # Leader Server discovered stop multicasting
                             leader_search_try = 7
                             break
+                        # if data.decode() == "False" and MY_IP != ip:
+                        #     self.serverlist.append((server_addr, False))
 
                     except socket.timeout:
                         print('Timed out, no more responses')
@@ -124,18 +135,95 @@ class Server():
 
 
     def UpdateServerList(self):
-        print(self.serverlist)
 
-        while True: # debug config
+        while True:
 
-            if len(self.serverlist) == 0:
-                print('Serverlist is empty')
-                print(self.serverlist)
+            while self.isLeader == True:
+            # while True: # debug config
 
-            elif len(self.serverlist) > 0:
-                print('Serverlist is filled')
-                print(self.serverlist)
-                self.HeartbeatSend()
+                if len(self.serverlist) == 0:
+                    print('Serverlist is empty')
+                    print(self.serverlist)
+
+                if len(self.serverlist) > 0:
+                    print('Serverlist is filled')
+                    print(self.serverlist)
+
+                    # Send Serverlist updates
+
+                    if len(self.serverlist) > 0:
+                        for x in range (len(self.serverlist)):
+                            servers_and_leader = self.serverlist[x]
+                            server_address, isLeaderServer = servers_and_leader
+                            ip, port = server_address
+
+                            SLsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            SLsock.settimeout(3)
+
+                            try:
+                                SLsock.connect((ip, SERVER_SERVERLIST_PORT))
+                                newserverlist = pickle.dumps(self.serverlist)
+                                SLsock.send(newserverlist)
+
+                                try:
+                                    answer = SLsock.recv(1024)
+                                    answer = answer.decode()
+                                    print("Serverlist sent to: {} ".format(ip))
+                                except socket.timeout:
+                                    print("Connection failed: {}".format(ip))
+
+                            except:
+                                print("Connection failed: {}".format(ip))
+
+                            finally:
+                                SLsock.close()
+
+                    self.HeartbeatSend()
+
+                time.sleep(3)
+
+            while self.isLeader == False:
+
+                # Listen to Serverlist updates
+
+                server_address = ('', SERVER_SERVERLIST_PORT)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.bind(server_address)
+                sock.listen()
+                # Socket timeout so server doesn't get stuck
+                sock.settimeout(5)
+                print("Listening for serverlist...")
+
+
+                while self.isLeader == False:
+
+                    try:
+                        connection, server_address_leader = sock.accept()
+
+                        serverlistleader = connection.recv(2048)
+
+                        serverlistleader = pickle.loads(serverlistleader)
+
+                        newserverlist = []
+                        newserverlist = serverlistleader
+
+                        serverlist_lenght = len(newserverlist)
+
+                        for x in range(serverlist_lenght):
+                            servers_and_leader = newserverlist[x]
+                            server_address, isLeaderServer = servers_and_leader
+                            ip, port = server_address
+                            if ip == MY_IP:
+                                del newserverlist[x]
+                                newserverlist.append((server_address_leader, True))
+                                self.serverlist = newserverlist
+                                sock.close()
+                                self.HeartbeatSend()
+
+                    except socket.timeout:
+                        self.HeartbeatSend()
+
+
 
             time.sleep(3)
 
@@ -145,7 +233,7 @@ class Server():
 
         dead_host = -1
 
-        time.sleep(3)
+        time.sleep(5)
 
         for x in range(len(self.serverlist)):
 
@@ -172,6 +260,7 @@ class Server():
 
                 if isLeader == True:
                     print('Leader crashed')
+                    # Start leader election
                     self.MulticastSendMessage()
 
             finally:
@@ -184,6 +273,8 @@ class Server():
             print('Removed crashed server', ip, 'from serverlist')
 
             self.serverlist = newserverlist
+
+        self.UpdateServerList()
 
 
     def HeartbeatListen(self):
