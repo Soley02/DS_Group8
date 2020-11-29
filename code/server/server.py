@@ -79,6 +79,7 @@ class Server():
                 time.sleep(2)
 
             # Start leader election after 5 tries
+            # currently debug function, remove once leader election is coded
             if leader_search_try == 6:
                 self.isLeader = True
                 isLeader = self.isLeader
