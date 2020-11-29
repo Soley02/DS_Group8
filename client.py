@@ -21,7 +21,7 @@ port = 8080 #Server Port
 class client():
     def __init__(self):
         self.leader_server_found = False    #stops multicasting when leader server is found
-        self.client_message = []           #stores messages in list
+        self.client_message = []            #stores messages in list
 
         self.client_socket = ''
 
@@ -33,7 +33,6 @@ class client():
     def discoverLeaderServer(self):
         message = ('Client Multicast Message')
         multicast_group = ('224.3.29.71', MULTICAST_PORT_CLIENT)
-
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)       # Create the datagram socket
         sock.settimeout(2)                  # Set a timeout so the socket does not block indefinitely when trying # to receive data. (in sec flaot)
@@ -144,9 +143,22 @@ class client():
                 response = 'no'
                 connection.send(response.encode())
 
-            else:                           #client has no missed messages to send
-                response = 'no'
-                connection.send(response.encode())
+            else:  # look in list if there is a message
+
+                for x in range(len(self.client_list)):
+
+                    id, myconnection, order = self.client_list[x]
+
+                    if id > received_message:
+                        missed_msg_list.append(self.client_list[x])  # Put into list
+                    else:
+                        pass    #do nothing
+                if len(missed_msg_list) > 0:        #send missed message to server
+                    response = pickle.dumps(missed_msg_list)
+                    connection.send(response)
+                else:                               #client has no missed message to send
+                    response = 'no'
+                    connection.send(response.encode())
 
 if __name__ == '__main__':
     try:
