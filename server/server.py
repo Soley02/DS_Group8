@@ -170,12 +170,9 @@ class Server():
 
     def UpdateServerList(self):
 
-        # print("VALUES LEADER AND ELECTION")
-        # print(self.isLeader)
-        # print(self.electionongoing)
-
+        # check if an election is currently going on
         if self.electionongoing == False:
-
+            # check if I am the leader or not
             if self.isLeader == True:
                 self.UpdateServerListLeader()
             else:
@@ -377,17 +374,17 @@ class Server():
     # -------------------------- Leader Election --------------------------
     # ---------------------------------------------------------------------
 
+    def NewLeaderElectionStarted(self):
+
+        if self.electionongoing == True:
+            self.LeaderElection()
+        else:
+            time.sleep(2)
+            self.NewLeaderElectionStarted()
+
     def LeaderElection(self):
 
-        print("ELECTION STARTING")
-        print(self.isLeader)
-        print(self.electionongoing)
-
         while self.electionongoing == True:
-
-            if self.isLeader == True:
-                self.electionongoing = False
-                return self.electionongoing
 
             # Form ring; fill ring list from serverlist and own ip
             ring_members = []
@@ -400,20 +397,18 @@ class Server():
                 ring_members.append(ip)
 
             # Get right neighbour
-            print("unsorted neighbours")
-            print(ring_members)
+            # print("unsorted neighbours")
+            # print(ring_members)
 
             ring_members.sort()
 
-            print("sorted neighbours")
-            print(ring_members)
+            # print("sorted neighbours")
+            # print(ring_members)
 
             # find my IP in the sorted list
             index_MY_IP = ring_members.index(MY_IP)
 
             x = index_MY_IP + 1
-
-            print(len(ring_members))
 
             # Check if the serverlist has only 1 entry, make myself leader then
             if len(ring_members) == 1:
@@ -424,8 +419,8 @@ class Server():
 
             if len(ring_members) > 1:
 
-                print("VALUE X")
-                print(x)
+                # print("VALUE X")
+                # print(x)
 
                 if x == len(ring_members):
                     neighbor_IP = ring_members[0]
@@ -434,8 +429,8 @@ class Server():
                     neighbor_IP = ring_members[index_MY_IP + 1]
                     ring_members_index = index_MY_IP + 1
 
-                print("Neighbor IP: ")
-                print(neighbor_IP)
+                # print("Neighbor IP: ")
+                # print(neighbor_IP)
 
                 # if neighbor_IP is empty, that means current server is the last one in the list, so set index to the first one in the list
                 if neighbor_IP == '':
@@ -445,6 +440,7 @@ class Server():
                 ELsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 ELsock.settimeout(3)
 
+                # convert election message into string to be able to compare it later
                 election_ballot = str(self.election_message)
 
                 print("ELECTION CONNECTION")
@@ -458,13 +454,14 @@ class Server():
                     try:
                         response = ELsock.recv(1024)
                         print("Received Election response: {}".format(response.decode()))
+                        continue
 
                     # no response from neighbour, so remove neighbour from the list and try next neighbour
                     except socket.timeout:
                         print("Cannot connect to XXXXXXXXXXXX: {}".format(neighbor_IP))
                         continue
 
-                except socket.timeout:
+                except:
                     print("Cannot connect to YYYYYYYYY: {}".format(neighbor_IP))
                     # Remove failed connection from list
                     election_serverlist = self.serverlist
@@ -477,54 +474,180 @@ class Server():
                             del election_serverlist[y]
                             self.serverlist = election_serverlist
                 finally:
+                    time.sleep(1)
                     ELsock.close()
+
+            # Breakpoint for the while loop
+            if self.newLeaderElected == True:
+                self.electionongoing = False
+                break
+
+        if self.electionongoing == False:
+            self.NewLeaderElectionStarted()
 
     def LeaderElectionListen(self):
 
-        server_address = (MY_IP, SERVER_LEADER_ELECTION_PORT)
+        server_address = ('', SERVER_LEADER_ELECTION_PORT)
+
+        new_leader_elected = "New Leader Elected"
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Create a TCP/IP socket
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(server_address)  # Bind to the server address
         sock.listen()
         print('Listening to Election Message on Port: {} '.format(SERVER_LEADER_ELECTION_PORT))
 
         while True:
             # Wait for connection
-            connection, client_address = sock.accept()
+            connection, server_address = sock.accept()
             election_ballot = connection.recv(1024)
             election_ballot = election_ballot.decode()
+
             MY_ID_string = str(MY_ID)
+
+            # acknowledge incoming message and reply
+            if election_ballot:
+                print("Received election ballot from {} ".format(server_address))
+                message = "received election ballot"
+                connection.sendall(message.encode())
 
             print('Received Election Message from: {} '.format(server_address))
             print(self.election_message)
             print('Election Ballot')
             print(election_ballot)
+            print("MY UUID STRING")
+            print(MY_ID_string)
 
             # compare own uuid with received uuid
             # if own uuid > received uuid: send my uuid
             if MY_ID_string > election_ballot:
                 # sock.close()
+                self.electionongoing = True
                 self.election_message = MY_ID
 
             # if own uuid < received uuid: send received uuid
             if MY_ID_string < election_ballot:
                 # sock.close()
+                self.electionongoing = True
                 self.election_message = election_ballot
 
             # if own uuid == received uuid: make myself leader; leader elected
             if MY_ID_string == election_ballot:
                 # sock.close()
-                self.election_message = 'New Leader elected'
+                self.election_message = new_leader_elected
                 self.isLeader = True
-                self.electionongoing = False
+                self.electionongoing = True
 
-            if election_ballot == 'New Leader elected':
+            if election_ballot == new_leader_elected:
                 # sock.close()
                 self.electionongoing = False
                 self.newLeaderElected = True
 
-            sock.close()
+            # sock.close()
+
+    # -----------------------------------------------------------------------
+    # -------------------------- Client Connection --------------------------
+    # -----------------------------------------------------------------------
+
+    def ListenForClientConnection(self):
+
+        # Listen for Client connection on multicast port
+
+        # establish connection with a client if I am the leader otherwise pass
+
+        # put established connection in clientlist
+
+        pass
+
+    def UpdateClientWithNewLeader(self):
+
+        # new leader is elected
+
+        # establish connection with clients based on the clientlist
+
+        # tell them I am the new leader
+
+        pass
+
+
+    # ----------------------------------------------------------------
+    # -------------------------- Clientlist --------------------------
+    # ----------------------------------------------------------------
+
+    def UpdateClientList(self):
+
+        # do not update clientlist if an election is going on
+        if self.electionongoing == False:
+
+            if self.isLeader == True:
+                self.UpdateClientListLeader()
+            else:
+                self.UpdateClientListReplica()
+        else:
+            time.sleep(1)
+            self.UpdateClientList()
+
+    def UpdateClientListLeader(self):
+
+        # run through clientlist to check if clients are still there
+        # remove disconnected clients from clientlist
+        # send updated client list to replica servers
+        pass
+
+    def UpdateClientListReplica(self):
+
+        # backup current clientlist
+
+        # listen for clientlist from leader
+        # compare with own clientlist
+        # override own clientlist if leader clientlist is newer
+
+        # if leader crashes during clientlist update, reuse the backup clientlist
+
+        pass
+
+    # -----------------------------------------------------------------------
+    # -------------------------- Chatroom Messages --------------------------
+    # -----------------------------------------------------------------------
+
+    def UpdateMessages(self):
+
+        # do not update messages if an election is going on
+        if self.electionongoing == False:
+
+            if self.isLeader == True:
+                self.UpdateMessagesLeader()
+            else:
+                self.UpdateMessagesReplica()
+        else:
+            time.sleep(1)
+            self.UpdateMessages()
+
+
+    def UpdateMessagesLeader(self):
+
+        # receive new messages from clients
+
+        # deliver new messages to other clients
+
+        # pass message history on to the replicas
+
+        pass
+
+    def UpdateMessagesReplica(self):
+
+        # backup current message history
+
+        # listen for message history from leader
+
+        # compare message history with currently saved one
+
+        # override saved message history if the leader message history is newer
+
+        # if leader crashes, use backup message history
+
+        pass
+
 
     # ----------------------------------------------------------
     # -------------------------- Main --------------------------
@@ -547,3 +670,6 @@ if __name__ == '__main__':
 
     thread5 = threading.Thread(target=server.LeaderElectionListen)
     thread5.start()
+
+    thread6 = threading.Thread(target=server.NewLeaderElectionStarted())
+    thread6.start()
