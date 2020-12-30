@@ -35,6 +35,7 @@ class Server():
         self.isLeader = False   # Variable to mark self as leader
         self.serverlist = []    # List of Servers and their addresses
         self.clientlist = []    # List of Clients and their addresses
+        self.clientnames = []  # List of Clients and their names
 
         self.serverJustStarted = True   # Variable to check if server first started
 
@@ -225,7 +226,6 @@ class Server():
             self.HeartbeatSend()
 
         time.sleep(3)
-
 
     def UpdateServerListMember(self):
 
@@ -549,6 +549,10 @@ class Server():
     # -------------------------- Client Connection --------------------------
     # -----------------------------------------------------------------------
 
+    def ClientLeaderInteraction(self):
+        time.sleep(1)
+        self.ListenForClientConnection()
+
     def ListenForClientConnection(self):
 
         # Listen for Client connection on multicast port
@@ -557,7 +561,37 @@ class Server():
 
         # put established connection in clientlist
 
-        pass
+        if self.isLeader:
+            print('Listening for CLIENTS')
+            server_address = ('', MULTICAST_PORT_CLIENT)
+
+            # Create Socket and bind to server address
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind(server_address)
+
+            # Tell the operating system to add the socket to the multicast group
+            group = socket.inet_aton(MULTICAST_GROUP_IP)
+            mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+            # Listen for Client Connection
+            while True:
+                data, address = sock.recvfrom(1024)
+
+                # print('Multicast from Client: received {} bytes from {}'.format(len(data), address))
+                # print('Multicast from Client: sending acknowledgement to {}'.format(address))
+
+                # Add Client to Clientlist
+                print('adding client to client list')
+                self.clientlist.append((address))
+                print(self.clientlist)
+
+                return_message = 'Welcome to the chatroom'
+                sock.sendto(return_message.encode(), address)
+
+        else:
+            time.sleep(1)
+            self.ClientLeaderInteraction()
 
     def UpdateClientWithNewLeader(self):
 
@@ -617,12 +651,62 @@ class Server():
 
             if self.isLeader == True:
                 self.UpdateMessagesLeader()
+
+                self.serverclient = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.serverclient.bind((MY_IP, CLIENT_CONNECTION_TO_LEADER_PORT))
+                self.serverclient.listen()
+
+                self.ListeningForClientMessages()
+
             else:
                 self.UpdateMessagesReplica()
         else:
             time.sleep(1)
             self.UpdateMessages()
 
+    def BroadcastMessagesToClients(message, self):
+        for client in self.clientlist:
+            client.send(message)
+
+            # send messages to replica here too?
+
+    def HandlingClientMessages(client, self):
+        while True:
+            try:
+                # Broadcasting Messages
+                message = client.recv(1024)
+                self.BroadcastMessagesToClients(message)
+            except:
+                # Removing And Closing Clients
+                index = self.clientlist.index(client)
+                self.clientlist.remove(client)
+                client.close()
+                nickname = self.clientnames[index]
+                self.broadcast('{} left!'.format(nickname).encode('ascii'))
+                self.clientnames.remove(nickname)
+                break
+
+    def ListeningForClientMessages(self):
+
+        while True:
+            # Accept Connection
+            client, address = self.serverclient.accept()
+            print("Connected with {}".format(str(address)))
+
+            # Request And Store Nickname
+            client.send('NICK'.encode('ascii'))
+            nickname = client.recv(1024).decode('ascii')
+            self.clientnames.append(nickname)
+            self.clientlist.append(client)
+
+            # Print And Broadcast Nickname
+            print("Nickname is {}".format(nickname))
+            self.BroadcastMessagesToClients("{} joined!".format(nickname).encode('ascii'))
+            client.send('Connected to server!'.encode('ascii'))
+
+            # Start Handling Thread For Client
+            thread = threading.Thread(target=self.HandlingClientMessages, args=(client,))
+            thread.start()
 
     def UpdateMessagesLeader(self):
 
@@ -671,5 +755,8 @@ if __name__ == '__main__':
     thread5 = threading.Thread(target=server.LeaderElectionListen)
     thread5.start()
 
-    thread6 = threading.Thread(target=server.NewLeaderElectionStarted())
+    thread6 = threading.Thread(target=server.NewLeaderElectionStarted)
     thread6.start()
+
+    thread8 = threading.Thread(target=server.ClientLeaderInteraction)
+    thread8.start()
