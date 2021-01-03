@@ -33,16 +33,16 @@ MY_ID = uuid.uuid1()
 
 class Server():
     def __init__(self):
-        self.isLeader = True   # Variable to mark self as leader DEFAULT VALUE FALSE
+        self.isLeader = False   # Variable to mark self as leader DEFAULT VALUE FALSE
         self.serverlist = []    # List of Servers and their addresses
         self.clientlist = []    # List of Clients and their addresses
         self.clientnames = []  # List of Clients and their names
 
-        self.serverJustStarted = False   # Variable to check if server first started DEFAULT VALUE TRUE
+        self.serverJustStarted = True   # Variable to check if server first started DEFAULT VALUE TRUE
 
         self.election_message = MY_ID   # Variable for the Election message
-        self.electionongoing = False    # Variable to check if a election is happening or not
-        self.newLeaderElected = False   # Variable to check if a new leader was elected
+        self.electionongoing = False    # Variable to check if a election is happening or not DEFAULT VALUE FALSE
+        self.newLeaderElected = False   # Variable to check if a new leader was elected DEFAULT VALUE FALSE
 
     # ---------------------------------------------------------------
     # -------------------------- Multicast --------------------------
@@ -104,7 +104,8 @@ class Server():
                                 print("LEADER FOUND")
                                 self.serverlist.append((server_addr, True))
 
-                                leader_server_found = True # Leader Server discovered stop multicasting
+                                # Leader Server discovered stop multicasting
+                                leader_server_found = True
                                 leader_search_try = 7
                                 break
 
