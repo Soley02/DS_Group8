@@ -136,7 +136,6 @@ class Server():
         time.sleep(1)
         self.MulticastSendMessage()
 
-
     def MulticastListenMessage(self):
 
         server_address = ('', MULTICAST_PORT_SERVER)
@@ -354,7 +353,6 @@ class Server():
 
         self.UpdateServerList()
 
-
     def HeartbeatListen(self):
 
         server_address = ('', UNICAST_PORT_SERVER)
@@ -460,11 +458,11 @@ class Server():
 
                     # no response from neighbour, so remove neighbour from the list and try next neighbour
                     except socket.timeout:
-                        print("Cannot connect to XXXXXXXXXXXX: {}".format(neighbor_IP))
+                        print("Cannot connect to: {}".format(neighbor_IP))
                         continue
 
                 except:
-                    print("Cannot connect to YYYYYYYYY: {}".format(neighbor_IP))
+                    print("Cannot connect to: {}".format(neighbor_IP))
                     # Remove failed connection from list
                     election_serverlist = self.serverlist
 
@@ -605,7 +603,6 @@ class Server():
 
         pass
 
-
     # ----------------------------------------------------------------
     # -------------------------- Clientlist --------------------------
     # ----------------------------------------------------------------
@@ -670,12 +667,9 @@ class Server():
             self.UpdateMessages()
 
     def BroadcastMessagesToClients(self, message):
-
-        print(self.clientlist)
-
+        # print(self.clientlist)
         for client in self.clientlist:
             client.send(message)
-
 
             # send messages to replica here too?
 
@@ -744,8 +738,6 @@ class Server():
 
         time.sleep(1)
         self.UpdateMessages()
-
-
 
     # ----------------------------------------------------------
     # -------------------------- Main --------------------------
