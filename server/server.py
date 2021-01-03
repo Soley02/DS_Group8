@@ -11,17 +11,18 @@ import uuid
 MULTICAST_GROUP_IP = '224.1.1.100'
 
 # Ports
-MULTICAST_PORT_SERVER = 5000    # Port for server to server Multicasts
-UNICAST_PORT_SERVER = 6000      # Port for server to server Unicasts
+MULTICAST_PORT_SERVER = 5000    # Port for server to server Multicasts / used for Sever Discovery
+UNICAST_PORT_SERVER = 6000      # Port for server to server Unicasts / used for Heartbeat
 MULTICAST_PORT_CLIENT = 7000    # Port for clients to discover servers
 
-CLIENT_CONNECTION_TO_LEADER_PORT = 9000
+CLIENT_CONNECTION_TO_LEADER_PORT = 9000     # unused
+CLIENT_MESSAGE_TO_LEADER_PORT = 9100        # Port for Clients to send Messages to Leader
 
-SERVER_CLIENTLIST_PORT = 5100
-SERVER_SERVERLIST_PORT = 5200
-SERVER_MESSAGELIST_PORT = 5300
-SERVER_LEADER_ELECTION_PORT = 5400
-SERVER_NEW_LEADER_PORT = 5500
+SERVER_CLIENTLIST_PORT = 5100           # Port to exchange List of Clients between Servers
+SERVER_SERVERLIST_PORT = 5200           # Port to exchange List of Servers between Servers
+SERVER_MESSAGELIST_PORT = 5300          # Port to exchange List of Messages from Clients between Servers
+SERVER_LEADER_ELECTION_PORT = 5400      # Port that signals a new Leaderelection has started
+SERVER_NEW_LEADER_PORT = 5500           # Port that announces the newly elected Leader
 
 
 # Local host information
@@ -32,12 +33,12 @@ MY_ID = uuid.uuid1()
 
 class Server():
     def __init__(self):
-        self.isLeader = False   # Variable to mark self as leader
+        self.isLeader = True   # Variable to mark self as leader DEFAULT VALUE FALSE
         self.serverlist = []    # List of Servers and their addresses
         self.clientlist = []    # List of Clients and their addresses
         self.clientnames = []  # List of Clients and their names
 
-        self.serverJustStarted = True   # Variable to check if server first started
+        self.serverJustStarted = False   # Variable to check if server first started DEFAULT VALUE TRUE
 
         self.election_message = MY_ID   # Variable for the Election message
         self.electionongoing = False    # Variable to check if a election is happening or not
@@ -581,10 +582,10 @@ class Server():
                 # print('Multicast from Client: received {} bytes from {}'.format(len(data), address))
                 # print('Multicast from Client: sending acknowledgement to {}'.format(address))
 
-                # Add Client to Clientlist
-                print('adding client to client list')
-                self.clientlist.append((address))
-                print(self.clientlist)
+                # # Add Client to Clientlist
+                # print('adding client to client list')
+                # self.clientlist.append((address))
+                # print(self.clientlist)
 
                 return_message = 'Welcome to the chatroom'
                 sock.sendto(return_message.encode(), address)
@@ -650,12 +651,15 @@ class Server():
         if self.electionongoing == False:
 
             if self.isLeader == True:
-                self.UpdateMessagesLeader()
+
+                print("Accepting Messages from Clients now")
 
                 self.serverclient = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.serverclient.bind((MY_IP, CLIENT_CONNECTION_TO_LEADER_PORT))
+                self.serverclient.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.serverclient.bind((MY_IP, CLIENT_MESSAGE_TO_LEADER_PORT))
                 self.serverclient.listen()
 
+                # self.UpdateMessagesLeader()
                 self.ListeningForClientMessages()
 
             else:
@@ -664,13 +668,17 @@ class Server():
             time.sleep(1)
             self.UpdateMessages()
 
-    def BroadcastMessagesToClients(message, self):
+    def BroadcastMessagesToClients(self, message):
+
+        print(self.clientlist)
+
         for client in self.clientlist:
             client.send(message)
 
+
             # send messages to replica here too?
 
-    def HandlingClientMessages(client, self):
+    def HandlingClientMessages(self, client):
         while True:
             try:
                 # Broadcasting Messages
@@ -682,7 +690,8 @@ class Server():
                 self.clientlist.remove(client)
                 client.close()
                 nickname = self.clientnames[index]
-                self.broadcast('{} left!'.format(nickname).encode('ascii'))
+                quitmessage = '{} left!'.format(nickname).encode('UTF-8')
+                self.BroadcastMessagesToClients(quitmessage)
                 self.clientnames.remove(nickname)
                 break
 
@@ -694,15 +703,17 @@ class Server():
             print("Connected with {}".format(str(address)))
 
             # Request And Store Nickname
-            client.send('NICK'.encode('ascii'))
-            nickname = client.recv(1024).decode('ascii')
+            client.send('NICK'.encode('UTF-8'))
+            print("HELLOOOOOOOOOOOOO WHAT'S YOUR NICK NAME")
+            nickname = client.recv(1024).decode('UTF-8')
             self.clientnames.append(nickname)
             self.clientlist.append(client)
 
             # Print And Broadcast Nickname
             print("Nickname is {}".format(nickname))
-            self.BroadcastMessagesToClients("{} joined!".format(nickname).encode('ascii'))
-            client.send('Connected to server!'.encode('ascii'))
+            self.clientcache = client
+            self.BroadcastMessagesToClients("{} joined!".format(nickname).encode('UTF-8'))
+            client.send('Connected to server!'.encode('UTF-8'))
 
             # Start Handling Thread For Client
             thread = threading.Thread(target=self.HandlingClientMessages, args=(client,))
@@ -730,7 +741,9 @@ class Server():
 
         # if leader crashes, use backup message history
 
-        pass
+        time.sleep(1)
+        self.UpdateMessages()
+
 
 
     # ----------------------------------------------------------
@@ -758,5 +771,8 @@ if __name__ == '__main__':
     thread6 = threading.Thread(target=server.NewLeaderElectionStarted)
     thread6.start()
 
-    thread8 = threading.Thread(target=server.ClientLeaderInteraction)
+    thread7 = threading.Thread(target=server.ClientLeaderInteraction)
+    thread7.start()
+
+    thread8 = threading.Thread(target=server.UpdateMessages)
     thread8.start()
