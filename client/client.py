@@ -1,3 +1,6 @@
+
+# based on https://www.neuralnine.com/tcp-chat-in-python/
+
 import socket
 import threading
 import time
@@ -9,7 +12,8 @@ MULTICAST_GROUP_IP = '224.1.1.100'
 # Ports
 MULTICAST_PORT_CLIENT = 7000    # Port for clients to discover servers
 
-CLIENT_CONNECTION_TO_LEADER_PORT = 9000
+CLIENT_CONNECTION_TO_LEADER_PORT = 9000     # unused
+CLIENT_MESSAGE_TO_LEADER_PORT = 9100        # Port for Clients to send Messages to Leader
 
 # Listening to Server and Sending Nickname
 def receive():
@@ -17,9 +21,9 @@ def receive():
         try:
             # Receive Message From Server
             # If 'NICK' Send Nickname
-            message = client.recv(1024).decode('ascii')
+            message = client.recv(1024).decode('UTF-8')
             if message == 'NICK':
-                client.send(nickname.encode('ascii'))
+                client.send(nickname.encode('UTF-8'))
             else:
                 print(message)
         except:
@@ -30,15 +34,16 @@ def receive():
 
 # Sending Messages To Server
 def write():
+    print("Connected to Chatroom, please type your message...")
     while True:
         message = '{}: {}'.format(nickname, input(''))
-        client.send(message.encode('ascii'))
+        client.send(message.encode('UTF-8'))
 
 
+# Execution Start
 
 # Choosing Nickname
 nickname = input("Choose your nickname: ")
-
 
 # Look for leader/chatroom
 connection_established = False
@@ -53,7 +58,7 @@ while connection_established == False:
     # Create Socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Timeout socket from spamming
-    sock.settimeout(5)
+    sock.settimeout(2)
     # Set time to live for message (network hops; 1 for local)
     ttl = struct.pack('b', 1)
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
@@ -85,15 +90,16 @@ if connection_established == True:
     # TCP Connection to leader/chatroom
 
     print("Connecting to Server...")
-    print(server_ip)
+    print("Server IP:" + server_ip)
 
     # Connecting To Server
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect((server_ip, CLIENT_CONNECTION_TO_LEADER_PORT))
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    client.connect((server_ip, CLIENT_MESSAGE_TO_LEADER_PORT))
 
-# Starting Threads For Listening And Writing
-receive_thread = threading.Thread(target=receive)
-receive_thread.start()
+    # Starting Threads For Listening And Writing
+    receive_thread = threading.Thread(target=receive)
+    receive_thread.start()
 
-write_thread = threading.Thread(target=write)
-write_thread.start()
+    write_thread = threading.Thread(target=write)
+    write_thread.start()
