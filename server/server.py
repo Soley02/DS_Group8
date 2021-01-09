@@ -44,7 +44,6 @@ class Server():
         self.newLeaderElected = False   # Variable to check if a new leader was elected DEFAULT VALUE FALSE
 
         self.vectorclock = 0    # Vector Clock variable to sync servers for chat history exchange
-        self.linecount = 0      #
 
     # ---------------------------------------------------------------
     # -------------------------- Multicast --------------------------
@@ -694,16 +693,7 @@ class Server():
         # do not update messages if an election is going on
         if self.electionongoing == False:
 
-            # count lines in chathistory.txt and compare with vector clock
-
             self.chathistory = open("chathistory.txt", "r")
-
-            content = self.chathistory.read()
-            contentlist = content.split("\n")
-            for i in contentlist:
-                if i:
-                    self.linecount = self.linecount + 1
-
             self.chathistory.close()
 
             if self.isLeader == True:
@@ -810,43 +800,59 @@ class Server():
         sock.bind(server_address)
         sock.listen()
         # Socket timeout so server doesn't get stuck
-        # sock.settimeout(5)
+        sock.settimeout(5)
         # print("Listening for chathistory...")
 
         while self.electionongoing == False:
 
-            connection, sever_address = sock.accept()
-            message = connection.recv(1024)
-            message = message.decode()
+            try:
 
-            if message == "Vectorclock":
+                connection, sever_address = sock.accept()
+                message = connection.recv(1024)
+                message = message.decode()
 
-                self.chathistory = open("chathistory.txt", "a+")
+                if message == "Vectorclock":
 
-                answer = "Ready"
-                connection.send(answer.encode())
+                    self.chathistory = open("chathistory.txt", "a+")
 
-                x = self.vectorclock
-                y = 0
-                answer = str(self.vectorclock)
-                connection.send(answer.encode())
+                    answer = "Ready"
+                    connection.send(answer.encode())
 
-                while y <= x:
-                    message = connection.recv(1024)
-                    message = message.decode()
+                    x = self.vectorclock
+                    y = 0
+                    answer = str(self.vectorclock)
+                    connection.send(answer.encode())
 
-                    # save message to chat history
-                    self.chathistory.write(message)
-                    self.chathistory.write("\n")
+                    while y <= x:
+                        message = connection.recv(1024)
+                        message = message.decode()
 
-                self.chathistory.close()
+                        # save message to chat history
+                        self.chathistory.write(message)
+                        self.chathistory.write("\n")
 
-            else:
-                pass
+                    self.chathistory.close()
 
-            sock.close()
-            time.sleep(2)
-            self.UpdateMessages()
+                else:
+                    pass
+
+            except socket.timeout:
+                sock.close()
+                break
+
+            except self.electionongoing == True:
+                sock.close()
+                break
+
+            except self.electionongoing == True:
+                sock.close()
+                break
+
+            finally:
+                sock.close()
+
+        time.sleep(2)
+        self.UpdateMessages()
 
     # ----------------------------------------------------------
     # -------------------------- Main --------------------------
