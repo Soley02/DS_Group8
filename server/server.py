@@ -652,6 +652,11 @@ class Server():
 
                 print("Accepting Messages from Clients now")
 
+                # create chat history textfile
+                self.chathistory = open("chathistory.txt", "a+")
+                self.chathistory.close()
+
+                # create socket for leader/client communication
                 self.serverclient = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.serverclient.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 self.serverclient.bind((MY_IP, CLIENT_MESSAGE_TO_LEADER_PORT))
@@ -668,6 +673,13 @@ class Server():
 
     def BroadcastMessagesToClients(self, message):
         # print(self.clientlist)
+
+        # save message to chat history
+        self.chathistory = open("chathistory.txt", "a+")
+        self.chathistory.write((message).decode('UTF-8'))
+        self.chathistory.write("\n")
+        self.chathistory.close()
+
         for client in self.clientlist:
             client.send(message)
 
@@ -699,10 +711,16 @@ class Server():
 
             # Request And Store Nickname
             client.send('NICK'.encode('UTF-8'))
-            print("HELLOOOOOOOOOOOOO WHAT'S YOUR NICK NAME")
+            # print("Hello What's your nick name")
             nickname = client.recv(1024).decode('UTF-8')
             self.clientnames.append(nickname)
             self.clientlist.append(client)
+
+            # Send chat history to new client
+            self.chathistory = open("chathistory.txt", "r")
+            chathistorymessage = self.chathistory.read()
+            client.send((chathistorymessage).encode('UTF-8'))
+            self.chathistory.close()
 
             # Print And Broadcast Nickname
             print("Nickname is {}".format(nickname))
