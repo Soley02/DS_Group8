@@ -621,7 +621,8 @@ class Server():
                 self.ListeningForClientMessages()
 
             else:
-                pass
+                time.sleep(1)
+                self.UpdateMessages()
         else:
             time.sleep(1)
             self.UpdateMessages()
