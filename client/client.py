@@ -12,94 +12,113 @@ MULTICAST_GROUP_IP = '224.1.1.100'
 # Ports
 MULTICAST_PORT_CLIENT = 7000    # Port for clients to discover servers
 
-CLIENT_CONNECTION_TO_LEADER_PORT = 9000     # unused
 CLIENT_MESSAGE_TO_LEADER_PORT = 9100        # Port for Clients to send Messages to Leader
 
-# Listening to Server and Sending Nickname
-def receive():
-    while True:
-        try:
-            # Receive Message From Server
-            # If 'NICK' Send Nickname
-            message = client.recv(1024).decode('UTF-8')
-            if message == 'NICK':
-                client.send(nickname.encode('UTF-8'))
-            else:
-                print(message)
-        except:
-            # Close Connection When Error
-            print("An error occured!")
-            client.close()
-            break
 
-# Sending Messages To Server
-def write():
-    print("Connected to Chatroom, please type your message...")
-    while True:
-        message = '{}: {}'.format(nickname, input(''))
-        client.send(message.encode('UTF-8'))
+###################################################################################################################
+###################################################################################################################
+###################################################################################################################
+
+class ChatClient():
+    def __init__(self):
+        self.connection_established = False   # Variable to mark established connection with leader
+        self.server_port = ''
+        self.server_ip = ''
+
+    def ChooseNickname(self):
+
+        # Choosing Nickname
+        self.nickname = input("Choose your nickname: ")
+
+        self.LookForChatroom()
 
 
-# Execution Start
+    def LookForChatroom(self):
 
-# Choosing Nickname
-nickname = input("Choose your nickname: ")
+        while self.connection_established == False:
 
-# Look for leader/chatroom
-connection_established = False
-server_port = ''
-server_ip = ''
+            message = ('Looking for Chatroom')
+            multicast_group = (MULTICAST_GROUP_IP, MULTICAST_PORT_CLIENT)
 
-while connection_established == False:
+            # Create Socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # Timeout socket from spamming
+            sock.settimeout(2)
+            # Set time to live for message (network hops; 1 for local)
+            ttl = struct.pack('b', 1)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
 
-    message = ('Multicast Message looking for Chatroom')
-    multicast_group = (MULTICAST_GROUP_IP, MULTICAST_PORT_CLIENT)
+            sock.sendto(message.encode(), multicast_group)
 
-    # Create Socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # Timeout socket from spamming
-    sock.settimeout(2)
-    # Set time to live for message (network hops; 1 for local)
-    ttl = struct.pack('b', 1)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
+            # look for chatroom leader
+            while True:
+                try:
+                    data, server_addr = sock.recvfrom(2048)
 
-    sock.sendto(message.encode(), multicast_group)
+                    if data:
+                        print('received "%s" from %s' % (data.decode(), server_addr))
+                        print(data.decode())
+                        self.server_ip, self.server_port = server_addr
+                        self.connection_established = True
+                        break
 
-    # look for chatroom leader
-    while True:
-        try:
-            data, server_addr = sock.recvfrom(2048)
+                    else:
+                        pass
 
-            if data:
-                print('received "%s" from %s' % (data.decode(), server_addr))
-                print(data.decode())
-                server_ip, server_port = server_addr
-                connection_established = True
+                except socket.timeout:
+                    print('Timed out, no more responses')
+                    self.connection_established = False
+                    break
+
+            time.sleep(1)
+
+        if self.connection_established == True:
+
+            # TCP Connection to leader/chatroom
+            print("Connecting to Server...")
+            print("Server IP:" + self.server_ip)
+
+            # Connecting To Server
+            self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # self.client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.client.connect((self.server_ip, CLIENT_MESSAGE_TO_LEADER_PORT))
+
+            # Starting Threads For Listening And Writing
+            receive_thread = threading.Thread(target=ChatClient.receive)
+            receive_thread.start()
+
+            write_thread = threading.Thread(target=ChatClient.write)
+            write_thread.start()
+
+    def receive(self):
+        while True:
+            try:
+                # Receive Message From Server
+                # If 'NICK' Send Nickname
+                message = self.client.recv(1024).decode('UTF-8')
+                if message == 'NICK':
+                    self.client.send(self.nickname.encode('UTF-8'))
+                else:
+                    print(message)
+            except:
+                # Close Connection When Error
+                print("An error occured!")
+                self.client.close()
                 break
 
-            else:
-                pass
+        self.LookForChatroom()
 
-        except socket.timeout:
-            print('Timed out, no more responses')
-            break
+    # Sending Messages To Server
+    def write(self):
+        print("Connected to Chatroom, please type your message...")
+        while True:
+            message = '{}: {}'.format(self.nickname, input(''))
+            self.client.send(message.encode('UTF-8'))
 
-    time.sleep(1)
 
-if connection_established == True:
-    # TCP Connection to leader/chatroom
 
-    print("Connecting to Server...")
-    print("Server IP:" + server_ip)
+if __name__ == '__main__':
+    ChatClient = ChatClient()
 
-    # Connecting To Server
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    client.connect((server_ip, CLIENT_MESSAGE_TO_LEADER_PORT))
-
-    # Starting Threads For Listening And Writing
-    receive_thread = threading.Thread(target=receive)
-    receive_thread.start()
-
-    write_thread = threading.Thread(target=write)
-    write_thread.start()
+    thread1 = threading.Thread(target=ChatClient.ChooseNickname)
+    thread1.start()
