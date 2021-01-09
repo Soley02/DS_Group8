@@ -6,8 +6,7 @@ import concurrent
 import pickle
 import uuid
 
-# Broadcast IP Fritzbox 192.168.178.255
-# BROADCAST_IP = "192.168.178.255"
+# IP Multicast Group
 MULTICAST_GROUP_IP = '224.1.1.100'
 
 # Ports
@@ -15,8 +14,8 @@ MULTICAST_PORT_SERVER = 5000    # Port for server to server Multicasts / used fo
 UNICAST_PORT_SERVER = 6000      # Port for server to server Unicasts / used for Heartbeat
 MULTICAST_PORT_CLIENT = 7000    # Port for clients to discover servers
 
-CLIENT_CONNECTION_TO_LEADER_PORT = 9000     # unused
 CLIENT_MESSAGE_TO_LEADER_PORT = 9100        # Port for Clients to send Messages to Leader
+SEVER_CHATHISTORY_PORT = 9200               # Port used to update the chat history between leader and replica
 
 SERVER_CLIENTLIST_PORT = 5100           # Port to exchange List of Clients between Servers
 SERVER_SERVERLIST_PORT = 5200           # Port to exchange List of Servers between Servers
@@ -36,13 +35,16 @@ class Server():
         self.isLeader = False   # Variable to mark self as leader DEFAULT VALUE FALSE
         self.serverlist = []    # List of Servers and their addresses
         self.clientlist = []    # List of Clients and their addresses
-        self.clientnames = []  # List of Clients and their names
+        self.clientnames = []   # List of Clients and their names
 
         self.serverJustStarted = True   # Variable to check if server first started DEFAULT VALUE TRUE
 
         self.election_message = MY_ID   # Variable for the Election message
         self.electionongoing = False    # Variable to check if a election is happening or not DEFAULT VALUE FALSE
         self.newLeaderElected = False   # Variable to check if a new leader was elected DEFAULT VALUE FALSE
+
+        self.vectorclock = 0    # Vector Clock variable to sync servers for chat history exchange
+        self.linecount = 0      #
 
     # ---------------------------------------------------------------
     # -------------------------- Multicast --------------------------
@@ -189,11 +191,11 @@ class Server():
 
         if len(self.serverlist) == 0:
             print('Serverlist is empty')
-            print(self.serverlist)
+            # print(self.serverlist)
 
         if len(self.serverlist) > 0:
-            print('Serverlist is filled')
-            print(self.serverlist)
+            # print('Serverlist is filled')
+            # print(self.serverlist)
 
             # Send Serverlist updates
 
@@ -581,7 +583,7 @@ class Server():
                 # print('Multicast from Client: received {} bytes from {}'.format(len(data), address))
                 # print('Multicast from Client: sending acknowledgement to {}'.format(address))
 
-                # # Add Client to Clientlist
+                # Add Client to Clientlist
                 # print('adding client to client list')
                 # self.clientlist.append((address))
                 # print(self.clientlist)
@@ -593,52 +595,6 @@ class Server():
             time.sleep(1)
             self.ClientLeaderInteraction()
 
-    def UpdateClientWithNewLeader(self):
-
-        # new leader is elected
-
-        # establish connection with clients based on the clientlist
-
-        # tell them I am the new leader
-
-        pass
-
-    # ----------------------------------------------------------------
-    # -------------------------- Clientlist --------------------------
-    # ----------------------------------------------------------------
-
-    def UpdateClientList(self):
-
-        # do not update clientlist if an election is going on
-        if self.electionongoing == False:
-
-            if self.isLeader == True:
-                self.UpdateClientListLeader()
-            else:
-                self.UpdateClientListReplica()
-        else:
-            time.sleep(1)
-            self.UpdateClientList()
-
-    def UpdateClientListLeader(self):
-
-        # run through clientlist to check if clients are still there
-        # remove disconnected clients from clientlist
-        # send updated client list to replica servers
-        pass
-
-    def UpdateClientListReplica(self):
-
-        # backup current clientlist
-
-        # listen for clientlist from leader
-        # compare with own clientlist
-        # override own clientlist if leader clientlist is newer
-
-        # if leader crashes during clientlist update, reuse the backup clientlist
-
-        pass
-
     # -----------------------------------------------------------------------
     # -------------------------- Chatroom Messages --------------------------
     # -----------------------------------------------------------------------
@@ -648,13 +604,13 @@ class Server():
         # do not update messages if an election is going on
         if self.electionongoing == False:
 
+            # create chat history textfile if it does not exist, otherwise open and append
+            self.chathistory = open("chathistory.txt", "a+")
+            self.chathistory.close()
+
             if self.isLeader == True:
 
                 print("Accepting Messages from Clients now")
-
-                # create chat history textfile
-                self.chathistory = open("chathistory.txt", "a+")
-                self.chathistory.close()
 
                 # create socket for leader/client communication
                 self.serverclient = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -666,7 +622,7 @@ class Server():
                 self.ListeningForClientMessages()
 
             else:
-                self.UpdateMessagesReplica()
+                pass
         else:
             time.sleep(1)
             self.UpdateMessages()
@@ -680,10 +636,11 @@ class Server():
         self.chathistory.write("\n")
         self.chathistory.close()
 
+        # Count vector clock up for each new written/saved/broadcasted message
+        self.vectorclock = self.vectorclock + 1
+
         for client in self.clientlist:
             client.send(message)
-
-            # send messages to replica here too?
 
     def HandlingClientMessages(self, client):
         while True:
@@ -732,30 +689,164 @@ class Server():
             thread = threading.Thread(target=self.HandlingClientMessages, args=(client,))
             thread.start()
 
-    def UpdateMessagesLeader(self):
+    def UpdateChatHistory(self):
 
-        # receive new messages from clients
+        # do not update messages if an election is going on
+        if self.electionongoing == False:
 
-        # deliver new messages to other clients
+            # count lines in chathistory.txt and compare with vector clock
+
+            self.chathistory = open("chathistory.txt", "r")
+
+            content = self.chathistory.read()
+            contentlist = content.split("\n")
+            for i in contentlist:
+                if i:
+                    self.linecount = self.linecount + 1
+
+            self.chathistory.close()
+
+            if self.isLeader == True:
+                self.UpdateChatHistoryLeader()
+
+            else:
+                self.UpdateChatHistoryReplica()
+
+        else:
+            time.sleep(1)
+            self.UpdateChatHistory()
+
+    def UpdateChatHistoryLeader(self):
+
+        # sync vector clock with replicas
 
         # pass message history on to the replicas
 
-        pass
+        while True:
 
-    def UpdateMessagesReplica(self):
+            if self.vectorclock == 0:
+                # print("chat history is empty; sleep")
+                pass
 
-        # backup current message history
+            else:
+
+                self.chathistory = open("chathistory.txt", "r")
+                content = self.chathistory.read()
+                contentlist = content.split("\n")
+
+                for x in range(len(self.serverlist)):
+                    servers_and_leader = self.serverlist[x]
+                    server_address, isLeaderServer = servers_and_leader
+                    ip, port = server_address
+
+                    CHsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    CHsock.settimeout(5)
+
+                    try:
+                        CHsock.connect((ip, SEVER_CHATHISTORY_PORT))
+                        myvectorclock = str(self.vectorclock)
+                        CHsock.send("Vectorclock".encode())
+
+                        try:
+                            answer = CHsock.recv(1024)
+                            answer = answer.decode()
+                            # print("Chathistory sent to: {} ".format(ip))
+
+                            if answer == "Ready":
+                                CHsock.send(myvectorclock.encode())
+
+                                try:
+                                    # Replica sends it's vector clock
+                                    answer = CHsock.recv(1024)
+                                    answer = answer.decode()
+
+                                    replicavectorclock = int(answer)
+
+                                    linestosend = self.vectorclock - replicavectorclock
+
+                                    index_chathistory = 0
+                                    with open("chathistory.txt") as f:
+                                        for index_chathistory, l in enumerate(f):
+                                            pass
+                                        index_chathistory = index_chathistory + 1
+
+                                    # Set lines to send at the latest line of the replica
+                                    currentindex = 0
+                                    currentindex = index_chathistory - linestosend
+
+                                    y = 0
+                                    while y <= linestosend:
+                                        answer = self.chathistory[currentindex]
+                                        CHsock.send(answer.encode())
+                                        currentindex = currentindex + 1
+                                        y = y + 1
+                                    # print("Chathistory sent to: {} ".format(ip))
+
+                                except socket.timeout():
+                                    pass
+
+                            else:
+                                pass
+                        except socket.timeout:
+                            # print("Connection failed: {}".format(ip))
+                            pass
+
+                    except:
+                        # print("Connection failed: {}".format(ip))
+                        pass
+
+                    finally:
+                        CHsock.close()
+                        self.chathistory.close()
+
+                time.sleep(3)
+
+    def UpdateChatHistoryReplica(self):
 
         # listen for message history from leader
 
-        # compare message history with currently saved one
+        server_address = ('', SEVER_CHATHISTORY_PORT)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(server_address)
+        sock.listen()
+        # Socket timeout so server doesn't get stuck
+        # sock.settimeout(5)
+        # print("Listening for chathistory...")
 
-        # override saved message history if the leader message history is newer
+        while self.electionongoing == False:
 
-        # if leader crashes, use backup message history
+            connection, sever_address = sock.accept()
+            message = connection.recv(1024)
+            message = message.decode()
 
-        time.sleep(1)
-        self.UpdateMessages()
+            if message == "Vectorclock":
+
+                self.chathistory = open("chathistory.txt", "a+")
+
+                answer = "Ready"
+                connection.send(answer.encode())
+
+                x = self.vectorclock
+                y = 0
+                answer = str(self.vectorclock)
+                connection.send(answer.encode())
+
+                while y <= x:
+                    message = connection.recv(1024)
+                    message = message.decode()
+
+                    # save message to chat history
+                    self.chathistory.write(message)
+                    self.chathistory.write("\n")
+
+                self.chathistory.close()
+
+            else:
+                pass
+
+            sock.close()
+            time.sleep(2)
+            self.UpdateMessages()
 
     # ----------------------------------------------------------
     # -------------------------- Main --------------------------
@@ -787,3 +878,6 @@ if __name__ == '__main__':
 
     thread8 = threading.Thread(target=server.UpdateMessages)
     thread8.start()
+
+    thread9 = threading.Thread(target=server.UpdateChatHistory)
+    thread9.start()
