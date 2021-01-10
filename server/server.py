@@ -39,6 +39,7 @@ class Server():
 
         self.serverJustStarted = True   # Variable to check if server first started DEFAULT VALUE TRUE
 
+        self.leader_server_found = ''
         self.election_message = MY_ID   # Variable for the Election message
         self.electionongoing = False    # Variable to check if a election is happening or not DEFAULT VALUE FALSE
         self.newLeaderElected = False   # Variable to check if a new leader was elected DEFAULT VALUE FALSE
@@ -51,26 +52,24 @@ class Server():
 
     def MulticastSendMessage(self):
 
-        leader_server_found = ''
-
         # Run Multicast Message to look for leader on server startup
         if self.serverJustStarted == True:
             self.serverJustStarted = False
-            leader_server_found = False
+            self.leader_server_found = False
 
-        # Run Multicast Message to for newly elected leader
+        # Run Multicast Message to find newly elected leader
         if self.newLeaderElected == True:
-            leader_server_found = False
+            self.leader_server_found = False
 
         if self.isLeader == True:
-            leader_server_found = False
+            self.leader_server_found = False
 
         leader_search_try = 0
 
-        if leader_server_found == False:
+        if self.leader_server_found == False:
 
             if self.isLeader == True:
-                leader_server_found = True
+                self.leader_server_found = True
                 leader_search_try = 7
 
             message = ('Multicast Message looking for Leader')
@@ -85,7 +84,7 @@ class Server():
             sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
 
             # look for leader 5 times, if no leader found, start new election
-            while (not leader_server_found):
+            while (not self.leader_server_found):
 
                 while leader_search_try < 5:
                     print("Looking for leader")
@@ -106,7 +105,7 @@ class Server():
                                 self.serverlist.append((server_addr, True))
 
                                 # Leader Server discovered stop multicasting
-                                leader_server_found = True
+                                self.leader_server_found = True
                                 leader_search_try = 7
                                 break
 
@@ -131,11 +130,12 @@ class Server():
                     break
 
                 if leader_search_try == 7:
-                    leader_server_found = True
+                    self.leader_server_found = True
                     break
 
-        time.sleep(1)
-        self.MulticastSendMessage()
+        else:
+            time.sleep(1)
+            self.MulticastSendMessage()
 
     def MulticastListenMessage(self):
 
@@ -346,8 +346,11 @@ class Server():
                 print('Leader crashed')
                 # Start leader election
                 self.serverlist = newserverlist
+                self.newLeaderElected = False
+                self.election_message = MY_ID
+                self.leader_server_found = False
                 self.electionongoing = True
-                self.LeaderElection()
+                # self.LeaderElection()
                 return self.serverlist
 
             self.serverlist = newserverlist
@@ -381,6 +384,7 @@ class Server():
             self.LeaderElection()
         else:
             time.sleep(2)
+            self.newLeaderElected = False
             self.NewLeaderElectionStarted()
 
     def LeaderElection(self):
@@ -455,7 +459,7 @@ class Server():
                     try:
                         response = ELsock.recv(1024)
                         print("Received Election response: {}".format(response.decode()))
-                        continue
+                        # continue
 
                     # no response from neighbour, so remove neighbour from the list and try next neighbour
                     except socket.timeout:
@@ -468,23 +472,38 @@ class Server():
                     election_serverlist = self.serverlist
 
                     for y in range(len(election_serverlist)):
-                        election_servers = election_serverlist[y]
-                        election_server_address, isLeaderServer = election_servers
-                        ip, port = election_server_address
-                        if ip == neighbor_IP:
-                            del election_serverlist[y]
-                            self.serverlist = election_serverlist
+                        try:
+                            election_servers = election_serverlist[y]
+                            election_server_address, isLeaderServer = election_servers
+                            ip, port = election_server_address
+                            if ip == neighbor_IP:
+                                del election_serverlist[y]
+                                self.serverlist = election_serverlist
+                        except:
+                            break
                 finally:
                     time.sleep(1)
                     ELsock.close()
 
             # Breakpoint for the while loop
+            if self.electionongoing == False:
+                break
+
             if self.newLeaderElected == True:
                 self.electionongoing = False
                 break
 
+            if self.isLeader == True:
+                self.newLeaderElected = True
+
         if self.electionongoing == False:
+            time.sleep(1)
+            self.election_message = MY_ID
+            self.newLeaderElected = False
             self.NewLeaderElectionStarted()
+
+        time.sleep(1)
+        self.NewLeaderElectionStarted()
 
     def LeaderElectionListen(self):
 
@@ -538,11 +557,14 @@ class Server():
                 self.election_message = new_leader_elected
                 self.isLeader = True
                 self.electionongoing = True
+                print("I AM THE NEWLY ELECTED LEADER")
 
             if election_ballot == new_leader_elected:
                 # sock.close()
+                print("NEW LEADER ELECTED; LOOK FOR NEW LEADER")
                 self.electionongoing = False
                 self.newLeaderElected = True
+                self.election_message = MY_ID
 
             # sock.close()
 
@@ -698,6 +720,7 @@ class Server():
             self.chathistory.close()
 
             if self.isLeader == True:
+                print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
                 self.UpdateChatHistoryLeader()
 
             else:
@@ -713,7 +736,9 @@ class Server():
 
         # pass message history on to the replicas
 
-        while True:
+        print("Passing chat history to replica")
+
+        while self.electionongoing == False:
 
             if self.vectorclock == 0:
                 # print("chat history is empty; sleep")
@@ -722,8 +747,7 @@ class Server():
             else:
 
                 self.chathistory = open("chathistory.txt", "r")
-                content = self.chathistory.read()
-                contentlist = content.split("\n")
+                content = self.chathistory.readlines()
 
                 for x in range(len(self.serverlist)):
                     servers_and_leader = self.serverlist[x]
@@ -767,7 +791,7 @@ class Server():
 
                                     y = 0
                                     while y <= linestosend:
-                                        answer = self.chathistory[currentindex]
+                                        answer = content[currentindex]
                                         CHsock.send(answer.encode())
                                         currentindex = currentindex + 1
                                         y = y + 1
@@ -792,9 +816,17 @@ class Server():
 
                 time.sleep(3)
 
+            if self.electionongoing == True:
+                break
+
+        time.sleep(3)
+        self.UpdateChatHistory()
+
     def UpdateChatHistoryReplica(self):
 
         # listen for message history from leader
+
+        print("Listening for chat history from Leader")
 
         server_address = ('', SEVER_CHATHISTORY_PORT)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -841,19 +873,15 @@ class Server():
                 sock.close()
                 break
 
-            except self.electionongoing == True:
-                sock.close()
-                break
-
-            except self.electionongoing == True:
-                sock.close()
-                break
-
             finally:
                 sock.close()
 
+            if self.electionongoing == True:
+                sock.close()
+                break
+
         time.sleep(2)
-        self.UpdateMessages()
+        self.UpdateChatHistory()
 
     # ----------------------------------------------------------
     # -------------------------- Main --------------------------
