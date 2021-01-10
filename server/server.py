@@ -862,6 +862,10 @@ class Server():
 if __name__ == '__main__':
     server = Server()
 
+    # Create chathistory.txt on startup
+    chathistory = open("chathistory.txt", "a+")
+    chathistory.close()
+
     thread1 = threading.Thread(target=server.MulticastListenMessage)
     thread1.start()
 
