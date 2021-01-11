@@ -15,7 +15,7 @@ UNICAST_PORT_SERVER = 6000      # Port for server to server Unicasts / used for 
 MULTICAST_PORT_CLIENT = 7000    # Port for clients to discover servers
 
 CLIENT_MESSAGE_TO_LEADER_PORT = 9100        # Port for Clients to send Messages to Leader
-SEVER_CHATHISTORY_PORT = 9200               # Port used to update the chat history between leader and replica
+SEVER_CHATHISTORY_PORT = 8000               # Port used to update the chat history between leader and replica
 
 SERVER_CLIENTLIST_PORT = 5100           # Port to exchange List of Clients between Servers
 SERVER_SERVERLIST_PORT = 5200           # Port to exchange List of Servers between Servers
@@ -626,8 +626,8 @@ class Server():
         if self.electionongoing == False:
 
             # create chat history textfile if it does not exist, otherwise open and append
-            self.chathistory = open("chathistory.txt", "a+")
-            self.chathistory.close()
+            # self.chathistory = open("chathistory.txt", "a+")
+            # self.chathistory.close()
 
             if self.isLeader == True:
 
@@ -653,10 +653,11 @@ class Server():
         # print(self.clientlist)
 
         # save message to chat history
+        print("LEADER: WRITTING MESSAGE INTO CHAT HISTORY")
         self.chathistory = open("chathistory.txt", "a+")
         self.chathistory.write((message).decode('UTF-8'))
         self.chathistory.write("\n")
-        self.chathistory.close()
+        # self.chathistory.close()
 
         # Count vector clock up for each new written/saved/broadcasted message
         self.vectorclock = self.vectorclock + 1
@@ -699,7 +700,7 @@ class Server():
             self.chathistory = open("chathistory.txt", "r")
             chathistorymessage = self.chathistory.read()
             client.send((chathistorymessage).encode('UTF-8'))
-            self.chathistory.close()
+            # self.chathistory.close()
 
             # Print And Broadcast Nickname
             print("Nickname is {}".format(nickname))
@@ -713,14 +714,15 @@ class Server():
 
     def UpdateChatHistory(self):
 
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
         # do not update messages if an election is going on
         if self.electionongoing == False:
 
-            self.chathistory = open("chathistory.txt", "r")
-            self.chathistory.close()
+            # self.chathistory = open("chathistory.txt", "r")
+            # self.chathistory.close()
 
             if self.isLeader == True:
-                print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
                 self.UpdateChatHistoryLeader()
 
             else:
@@ -749,72 +751,85 @@ class Server():
                 self.chathistory = open("chathistory.txt", "r")
                 content = self.chathistory.readlines()
 
-                for x in range(len(self.serverlist)):
-                    servers_and_leader = self.serverlist[x]
-                    server_address, isLeaderServer = servers_and_leader
-                    ip, port = server_address
+                try:
 
-                    CHsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    CHsock.settimeout(5)
+                    for x in range(len(self.serverlist)):
+                        servers_and_leader = self.serverlist[x]
+                        server_address, isLeaderServer = servers_and_leader
+                        ip, port = server_address
 
-                    try:
-                        CHsock.connect((ip, SEVER_CHATHISTORY_PORT))
-                        myvectorclock = str(self.vectorclock)
-                        CHsock.send("Vectorclock".encode())
+                        CHsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        CHsock.settimeout(3)
 
                         try:
-                            answer = CHsock.recv(1024)
-                            answer = answer.decode()
-                            # print("Chathistory sent to: {} ".format(ip))
+                            CHsock.connect((ip, SEVER_CHATHISTORY_PORT))
+                            # myvectorclock = str(self.vectorclock)
+                            CHsock.send("Vectorclock".encode())
 
-                            if answer == "Ready":
-                                CHsock.send(myvectorclock.encode())
+                            try:
+                                answer = CHsock.recv(2048)
+                                answer = answer.decode()
+                                # print("Chathistory sent to: {} ".format(ip))
 
-                                try:
-                                    # Replica sends it's vector clock
-                                    answer = CHsock.recv(1024)
-                                    answer = answer.decode()
+                                if answer == "Ready":
+                                    # CHsock.send(myvectorclock.encode())
 
-                                    replicavectorclock = int(answer)
+                                    try:
+                                        # Replica sends it's vector clock
+                                        answer = CHsock.recv(2048)
+                                        answer = answer.decode()
 
-                                    linestosend = self.vectorclock - replicavectorclock
+                                        replicavectorclock = int(answer)
 
-                                    index_chathistory = 0
-                                    with open("chathistory.txt") as f:
-                                        for index_chathistory, l in enumerate(f):
-                                            pass
-                                        index_chathistory = index_chathistory + 1
+                                        print("MESSAGE HISTORY L VC")
+                                        print(self.vectorclock)
+                                        print("MESSAGE HISTORY REPLICA VC")
+                                        print(replicavectorclock)
 
-                                    # Set lines to send at the latest line of the replica
-                                    currentindex = 0
-                                    currentindex = index_chathistory - linestosend
+                                        linestosend = self.vectorclock - replicavectorclock
 
-                                    y = 0
-                                    while y <= linestosend:
-                                        answer = content[currentindex]
-                                        CHsock.send(answer.encode())
-                                        currentindex = currentindex + 1
-                                        y = y + 1
-                                    # print("Chathistory sent to: {} ".format(ip))
+                                        print("Lines to send to Replica")
+                                        print(linestosend)
 
-                                except socket.timeout():
+                                        index_chathistory = 0
+                                        with open("chathistory.txt") as f:
+                                            for index_chathistory, l in enumerate(f):
+                                                pass
+                                            index_chathistory = index_chathistory + 1
+
+                                        # Set lines to send at the latest line of the replica
+                                        currentindex = 0
+                                        currentindex = index_chathistory - linestosend
+
+                                        y = 0
+                                        while y < linestosend:
+                                            answer = content[currentindex]
+                                            CHsock.send(answer.encode())
+                                            currentindex = currentindex + 1
+                                            y = y + 1
+                                        # print("Chathistory sent to: {} ".format(ip))
+
+                                        self.UpdateChatHistory()
+
+                                    except socket.timeout():
+                                        pass
+
+                                else:
                                     pass
-
-                            else:
+                            except socket.timeout:
+                                # print("Connection failed: {}".format(ip))
                                 pass
-                        except socket.timeout:
+
+                        except:
                             # print("Connection failed: {}".format(ip))
-                            pass
+                            print("Replica Chat History connection timed out")
+                            self.UpdateChatHistory()
 
-                    except:
-                        # print("Connection failed: {}".format(ip))
-                        pass
+                except:
+                    pass
 
-                    finally:
-                        CHsock.close()
-                        self.chathistory.close()
-
-                time.sleep(3)
+                finally:
+                    self.UpdateChatHistory()
 
             if self.electionongoing == True:
                 break
@@ -826,23 +841,27 @@ class Server():
 
         # listen for message history from leader
 
-        print("Listening for chat history from Leader")
-
         server_address = ('', SEVER_CHATHISTORY_PORT)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(server_address)
-        sock.listen()
+        ChatHistorysock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ChatHistorysock.bind(server_address)
+        ChatHistorysock.listen()
         # Socket timeout so server doesn't get stuck
-        sock.settimeout(5)
-        # print("Listening for chathistory...")
+        ChatHistorysock.settimeout(5)
+
+        print("Listening for chat history from Leader")
+        print(server_address)
 
         while self.electionongoing == False:
 
             try:
 
-                connection, sever_address = sock.accept()
+                connection, sever_address = ChatHistorysock.accept()
                 message = connection.recv(1024)
                 message = message.decode()
+                print("MESSAGE HISTORY MY VC")
+                print(self.vectorclock)
+                print("MESSAGE HISTORY L VC")
+                print(message)
 
                 if message == "Vectorclock":
 
@@ -857,27 +876,44 @@ class Server():
                     connection.send(answer.encode())
 
                     while y <= x:
-                        message = connection.recv(1024)
+                        message = connection.recv(2048)
                         message = message.decode()
+
+                        print("REPLICA: WRITTING MESSAGE INTO CHAT HISTORY")
 
                         # save message to chat history
                         self.chathistory.write(message)
-                        self.chathistory.write("\n")
+                        self.vectorclock = self.vectorclock + 1
+                        y = y + 1
 
-                    self.chathistory.close()
+                    time.sleep(2)
+                    self.UpdateChatHistory()
 
                 else:
-                    pass
+                    time.sleep(2)
+                    self.UpdateChatHistory()
+
+            except (AttributeError, EOFError, ImportError, IndexError) as e:
+                continue
+
+            except Exception as e:
+                ChatHistorysock.close()
+                break
 
             except socket.timeout:
-                sock.close()
+                ChatHistorysock.close()
+                break
+
+            except self.electionongoing == True:
+                ChatHistorysock.close()
                 break
 
             finally:
-                sock.close()
+                ChatHistorysock.close()
+                self.UpdateChatHistory()
 
             if self.electionongoing == True:
-                sock.close()
+                ChatHistorysock.close()
                 break
 
         time.sleep(2)
