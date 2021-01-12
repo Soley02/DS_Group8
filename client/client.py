@@ -67,6 +67,8 @@ class ChatClient():
 
                 except socket.timeout:
                     print('Timed out, no more responses')
+                    self.server_port = ''
+                    self.server_ip = ''
                     self.connection_established = False
                     break
 
@@ -106,6 +108,7 @@ class ChatClient():
                 self.client.close()
                 break
 
+        self.connection_established = False
         self.LookForChatroom()
 
     # Sending Messages To Server
