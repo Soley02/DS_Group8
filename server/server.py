@@ -32,12 +32,12 @@ MY_ID = uuid.uuid1()
 
 class Server():
     def __init__(self):
-        self.isLeader = True   # Variable to mark self as leader DEFAULT VALUE FALSE
+        self.isLeader = False   # Variable to mark self as leader DEFAULT VALUE FALSE
         self.serverlist = []    # List of Servers and their addresses
         self.clients = []    # List of Clients and their addresses
         self.nicknames = []   # List of Clients and their names
 
-        self.serverJustStarted = False   # Variable to check if server first started DEFAULT VALUE TRUE
+        self.serverJustStarted = True   # Variable to check if server first started DEFAULT VALUE TRUE
 
         self.leader_server_found = ''
         self.election_message = MY_ID   # Variable for the Election message
@@ -649,8 +649,12 @@ class Server():
 
         print("LEADER: WRITTING MESSAGE INTO CHAT HISTORY")
         chathistory = open("chathistory.txt", "a+")
-        chathistory.write((message).decode('UTF-8'))
+        chathistory.write((message).decode('UTF-8') + "\n")
         # chathistory.write("\n")
+
+        x = self.vectorclock
+        x = x + 1
+        self.vectorclock = x
 
         for client in self.clients:
             client.send(message)
@@ -718,84 +722,100 @@ class Server():
 
         print("Passing chat history to replica")
 
-        while self.electionongoing == False:
+        # while self.electionongoing == False:
 
-            if self.vectorclock == 0:
-                print("chat history is empty; sleep")
-                time.sleep(2)
+        if self.vectorclock == 0:
+            print("chat history is empty; sleep")
+            time.sleep(2)
 
-            else:
+        else:
 
-                try:
+            try:
 
-                    for x in range(len(self.serverlist)):
-                        servers_and_leader = self.serverlist[x]
-                        server_address, isLeaderServer = servers_and_leader
-                        ip, port = server_address
+                for x in range(len(self.serverlist)):
+                    servers_and_leader = self.serverlist[x]
+                    server_address, isLeaderServer = servers_and_leader
+                    ip, port = server_address
 
-                        CHsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        CHsock.settimeout(5)
+                    CHsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    CHsock.settimeout(5)
 
-                        try:
-                            CHsock.connect((ip, SEVER_CHATHISTORY_PORT))
+                    try:
+                        myvectorclockint = self.vectorclock
+                        myvectorclock = str(myvectorclockint)
+                        vectorclockreplica = 0
+                        message = ''
+                        answer = ''
+                        y = 0
+                        z = 0
+                        linestosend = 0
+                        currentindex = 0
 
-                            myvectorclockint = self.vectorclock
-                            myvectorclock = str(self.vectorclock)
-                            CHsock.send("Vectorclock".encode())
+                        CHsock.connect((ip, SEVER_CHATHISTORY_PORT))
+                        CHsock.send("Vectorclock".encode())
 
-                            answer = CHsock.recv(1024)
-                            answer = answer.decode()
-                            # print("Chathistory sent to: {} ".format(ip))
+                        answer = CHsock.recv(1024)
+                        answer = answer.decode()
+                        # print("Chathistory sent to: {} ".format(ip))
 
-                            if answer == "Ready":
-                                CHsock.send(myvectorclock.encode())
-                                vectorclockreplica = CHsock.recv(1024)
-                                vectorclockreplica = vectorclockreplica.decode()
-                                vectorclockreplica = int(vectorclockreplica)
+                        if answer == "Ready":
+                            CHsock.send(myvectorclock.encode())
+                            vectorclockreplica = CHsock.recv(1024)
+                            vectorclockreplica = vectorclockreplica.decode()
+                            vectorclockreplica = int(vectorclockreplica)
 
-                                if vectorclockreplica == myvectorclockint:
-                                    print("Replica is up to date")
-                                else:
-                                    linestosend = 0
-                                    linestosend = myvectorclockint - vectorclockreplica
-
-                                    file = open("chathistory.txt", "r")
-                                    CHindex = myvectorclockint
-                                    print(CHindex)
-
-                                    currentindex = 0
-                                    currentindex = CHindex - linestosend
-                                    y = 0
-                                    z = linestosend + 1
-
-                                    print("AAAAAAAAAAAAAAAAAAAAAAAAAAA")
-
-                                    print(currentindex)
-                                    print(z)
-                                    print(myvectorclockint)
-                                    print(vectorclockreplica)
-                                    while y < z:
-                                        file.seek(currentindex, 0)
-                                        message = file.readline()
-                                        CHsock.send(message.encode())
-                                        answer = CHsock.recv(1024)
-                                        answer = answer.decode()
-
-                                        if answer == "OK":
-                                            y = y + 1
-                                        else:
-                                            break
+                            if vectorclockreplica == myvectorclockint:
+                                print("Replica is up to date")
+                                break
 
                             else:
-                                print("Replica timed out")
 
-                        except:
-                            print("Replica timed out")
-                            break
+                                linestosend = myvectorclockint - vectorclockreplica
 
-                except:
-                    print("Replica timed out")
-                    break
+                                file = open("chathistory.txt", "r")
+                                lines = file.readlines()
+                                CHindex = myvectorclockint
+
+                                currentindex = CHindex - linestosend
+
+                                z = linestosend + 1
+
+                                # print("AAAAAAAAAAAAAAAAAAAAAAAAAAA")
+                                #
+                                # print(currentindex)
+                                # print(z)
+                                # print(myvectorclockint)
+                                # print(vectorclockreplica)
+
+                                while y < z:
+                                    message = lines[currentindex]
+                                    CHsock.send(message.encode())
+                                    answer = CHsock.recv(1024)
+                                    answer = answer.decode()
+
+                                    print("SEND LINE")
+                                    print(message)
+
+                                    n = 0
+                                    while n < 1:
+                                        if answer == "OK":
+                                            currentindex = currentindex + 1
+                                            y = y + 1
+                                            n = 1
+                                        else:
+                                            n = 0
+
+                                file.close()
+
+                        else:
+                            file.close()
+
+                    except:
+                        print("Replica timed out")
+                        file.close()
+                        break
+            except:
+                print("Replica timed out")
 
         time.sleep(3)
         self.UpdateChatHistory()
@@ -806,6 +826,7 @@ class Server():
 
         server_address = ('', SEVER_CHATHISTORY_PORT)
         ChatHistorysock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ChatHistorysock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         ChatHistorysock.bind(server_address)
         ChatHistorysock.listen()
         # Socket timeout so server doesn't get stuck
@@ -821,84 +842,94 @@ class Server():
                 connection, sever_address = ChatHistorysock.accept()
                 message = connection.recv(1024)
                 message = message.decode()
-                print("MESSAGE HISTORY MY VC")
-                print(self.vectorclock)
-                print("MESSAGE HISTORY L VC")
-                print(message)
+
+                z = 0
 
                 if message == "Vectorclock":
-
-                    self.chathistory = open("chathistory.txt", "a+")
 
                     answer = "Ready"
                     connection.send(answer.encode())
 
-                    x = self.vectorclock
+                    myvectorclock = self.vectorclock
                     y = 0
-                    answer = str(self.vectorclock)
+                    answer = str(myvectorclock)
                     connection.send(answer.encode())
 
                     message = connection.recv(1024)
                     message = message.decode()
                     message = int(message)
 
-                    print("MESSAGE HISTORY MY VC")
-                    print(self.vectorclock)
-                    print("MESSAGE HISTORY L VC")
-                    print(message)
+                    # print("MESSAGE HISTORY MY VC")
+                    # print(self.vectorclock)
+                    # print("MESSAGE HISTORY L VC")
+                    # print(message)
 
-                    if message > self.vectorclock:
+                    linestowrite = 0
+                    linestowrite = message - myvectorclock
 
-                        while y <= x:
+                    if message > myvectorclock:
+
+                        while y <= linestowrite:
                             message = connection.recv(1024)
                             message = message.decode()
 
                             print("REPLICA: WRITTING MESSAGE INTO CHAT HISTORY")
 
                             # save message to chat history
-                            self.chathistory.write(message)
+                            chathistory = open("chathistory.txt", "a+")
+                            chathistory.write(message)
+                            chathistory.close()
 
-                            self.vectorclock = self.vectorclock + 1
+                            z = self.vectorclock
+                            z = z + 1
+                            self.vectorclock = z
+
+                            time.sleep(0.3)
 
                             answer = "OK"
                             connection.send(answer.encode())
-
                             y = y + 1
-
-                            print("MESSAGE HISTORY MY VC")
+                            print("AAAAAAAAAAAAAAAA")
+                            print(y)
+                            print(linestowrite)
                             print(self.vectorclock)
+
+                        ChatHistorysock.close()
+                        self.UpdateChatHistory()
+
                     else:
                         print("Chat History is up to date")
-
-                    time.sleep(2)
+                        ChatHistorysock.close()
+                        time.sleep(1)
+                        self.UpdateChatHistory()
 
                 else:
-                    time.sleep(2)
-
-            except (AttributeError, EOFError, ImportError, IndexError) as e:
-                continue
-
-            except Exception as e:
-                ChatHistorysock.close()
-                break
+                    print("Passing on Chat History Update")
+                    ChatHistorysock.close()
+                    time.sleep(1)
+                    self.UpdateChatHistory()
 
             except socket.timeout:
                 ChatHistorysock.close()
-                break
+                time.sleep(1)
+                self.UpdateChatHistory()
 
-            except self.electionongoing == True:
+            except:
                 ChatHistorysock.close()
-                break
+                time.sleep(1)
+                self.UpdateChatHistory()
 
             finally:
                 ChatHistorysock.close()
+                time.sleep(1)
                 self.UpdateChatHistory()
 
             if self.electionongoing == True:
                 ChatHistorysock.close()
-                break
+                time.sleep(1)
+                self.UpdateChatHistory()
 
-        time.sleep(2)
+        time.sleep(1)
         self.UpdateChatHistory()
 
     # ----------------------------------------------------------
@@ -936,5 +967,5 @@ if __name__ == '__main__':
     thread8 = threading.Thread(target=server.UpdateMessages)
     thread8.start()
 
-    # thread9 = threading.Thread(target=server.UpdateChatHistory)
-    # thread9.start()
+    thread9 = threading.Thread(target=server.UpdateChatHistory)
+    thread9.start()
