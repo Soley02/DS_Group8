@@ -711,7 +711,7 @@ class Server():
                 self.UpdateChatHistoryReplica()
 
         else:
-            time.sleep(1)
+            time.sleep(2)
             self.UpdateChatHistory()
 
     def UpdateChatHistoryLeader(self):
@@ -780,13 +780,6 @@ class Server():
 
                                 z = linestosend + 1
 
-                                # print("AAAAAAAAAAAAAAAAAAAAAAAAAAA")
-                                #
-                                # print(currentindex)
-                                # print(z)
-                                # print(myvectorclockint)
-                                # print(vectorclockreplica)
-
                                 while y < z:
                                     message = lines[currentindex]
                                     CHsock.send(message.encode())
@@ -811,7 +804,6 @@ class Server():
                             file.close()
 
                     except:
-                        print("Replica timed out")
                         file.close()
                         break
             except:
@@ -889,10 +881,6 @@ class Server():
                             answer = "OK"
                             connection.send(answer.encode())
                             y = y + 1
-                            print("AAAAAAAAAAAAAAAA")
-                            print(y)
-                            print(linestowrite)
-                            print(self.vectorclock)
 
                         ChatHistorysock.close()
                         self.UpdateChatHistory()
@@ -928,6 +916,9 @@ class Server():
                 ChatHistorysock.close()
                 time.sleep(1)
                 self.UpdateChatHistory()
+
+            time.sleep(1)
+            self.UpdateChatHistory()
 
         time.sleep(1)
         self.UpdateChatHistory()
